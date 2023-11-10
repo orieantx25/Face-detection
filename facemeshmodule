@@ -1,0 +1,46 @@
+import cv2
+import mediapipe as mp
+
+mpFaceMesh = mp.solutions.face_mesh
+
+class FaceMeshDetector():
+
+    def __init__(self, staticMode=False, maxFaces=2):
+        self.staticMode = staticMode
+        self.maxFaces = maxFaces
+        #self.minDetectionCon = minDetectionCon
+        #self.minTrackCon = minTrackCon
+
+        #self.mpFaceMesh = mpFaceMesh.FaceMesh(self.staticMode, self.maxFaces,
+         #                                     self.minDetectionCon, self.minTrackCon)
+        self.drawSpec = mp.solutions.drawing_utils.DrawingSpec(thickness=1, circle_radius=2)
+
+    def findFaceMesh(self, img, draw=True):
+        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        results = self.mpFaceMesh.process(imgRGB)
+        faces = []
+        if results.multi_face_landmarks:
+            for faceLms in results.multi_face_landmarks:
+                if draw:
+                    mp.solutions.drawing_utils.draw_landmarks(img, faceLms,
+                                                             mpFaceMesh.FACE_CONNECTIONS,
+                                                             self.drawSpec, self.drawSpec)
+                face = []
+                for lm in faceLms.landmark:
+                    ih, iw, _ = img.shape
+                    x, y = int(lm.x * iw), int(lm.y * ih)
+                    face.append([x, y])
+                faces.append(face)
+        return img, faces
+
+def main():
+    cap = cv2.VideoCapture(0)
+    detector = FaceMeshDetector(staticMode=False, maxFaces=1)
+    while True:
+        success, img = cap.read()
+        img, faces = detector.findFaceMesh(img)
+        cv2.imshow("Face Mesh Detection", img)
+        cv2.waitKey(1)
+
+if __name__ == "__main__":
+    main()

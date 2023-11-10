@@ -11,6 +11,7 @@ def detect(gray, frame):
         eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 3)
         for (ex, ey, ew, eh) in eyes:
             cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (0, 255, 0), 2)
+            cv2.imwrite('detected_face_and_eyes.jpg', frame)
     return frame
 
 video = cv2.VideoCapture(0)
