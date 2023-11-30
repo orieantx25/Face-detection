@@ -1,0 +1,102 @@
+import cv2
+import tkinter as tk
+from tkinter import Canvas
+from PIL import Image, ImageTk
+import os
+
+# Initialize the webcam capture with camera index 0 (default camera)
+cap = cv2.VideoCapture(0)
+
+# Set the resolution for the webcam capture
+cap.set(3, 640)
+cap.set(4, 480)
+
+# Load the background image
+background_image = Image.open('Resources/background.png')
+
+
+#importing the mode images into a list
+folderModePath = 'Resources/Modes'
+modePathList = os.listdir(folderModePath)
+imgModeList = []
+for path in modePathList:
+    imgModeList.append(cv2.imread(os.path.join(folderModePath, path)))
+
+# print(len(imgModeList))
+
+
+
+
+# Define the coordinates for placing the webcam feed on the background
+webcam_x, webcam_y = 50, 160  # Adjust these values for webcam position
+webcam_w, webcam_h = 320, 240  # Adjust these values for webcam size
+
+# Calculate the total window size based on the webcam and background dimensions
+window_width = max(webcam_x + webcam_w, background_image.width)
+window_height = max(webcam_y + webcam_h, background_image.height)
+
+# Initialize the Tkinter window
+root = tk.Tk()
+root.title("Webcam and Background with Face and Eye Detection")
+
+# Create a Tkinter Canvas widget to display the video feed and background
+canvas = Canvas(root, width=window_width, height=window_height)
+canvas.pack()
+
+# Load the Haar Cascade Classifiers for face and eye detection
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+
+def detect_faces_and_eyes(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    
+    for (x, y, w, h) in faces:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        
+        # Detect eyes within each face region
+        roi_gray = gray[y:y + h, x:x + w]
+        roi_color = frame[y:y + h, x:x + w]
+        eyes = eye_cascade.detectMultiScale(roi_gray)
+        
+        for (ex, ey, ew, eh) in eyes:
+            cv2.rectangle(roi_color, (ex, ey), (ex + ew, ey + eh), (0, 0, 255), 2)
+    
+    return frame
+
+def update_frame():
+    # Read a frame from the webcam
+    success, frame = cap.read()
+
+    if success:
+        # Detect faces and eyes in the frame
+        frame_with_faces_and_eyes = detect_faces_and_eyes(frame)
+
+        # Convert the frame to a format that Tkinter can display
+        frame_rgb = cv2.cvtColor(frame_with_faces_and_eyes, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+        img = ImageTk.PhotoImage(image=img)
+
+        # Update the Canvas with the webcam feed
+        canvas.create_image(webcam_x, webcam_y, anchor=tk.NW, image=img)
+        canvas.img = img
+
+    # Schedule the next frame update
+    canvas.after(10, update_frame)
+
+# Start updating the frame
+update_frame()
+
+# Display the background image on the Canvas
+background_image_tk = ImageTk.PhotoImage(background_image)
+canvas.create_image(0, 0, anchor=tk.NW, image=background_image_tk)
+
+# Close the window when the 'Close' button is clicked
+close_button = tk.Button(root, text="Close", command=root.destroy)
+close_button.pack()
+
+# Start the Tkinter main loop
+root.mainloop()
+
+# Release the webcam when the window is closed
+cap.release()

@@ -1,68 +1,87 @@
 import cv2
-import mediapipe as mp
+import cvzone
 import os
+import pickle
+import face_recognition
+import numpy as np
 
-mpDraw = mp.solutions.drawing_utils
-mpFaceMesh = mp.solutions.face_mesh
-faceMesh = mpFaceMesh.FaceMesh(max_num_faces=2)
-drawSpec = mpDraw.DrawingSpec(thickness=1, circle_radius=1)
 
-face_cascade = cv2.CascadeClassifier(r"C:\Users\faiya\OneDrive\Desktop\Face detection\haarcascade_frontalface_default.xml")
-eye_cascade = cv2.CascadeClassifier(r"C:\Users\faiya\OneDrive\Desktop\Face detection\haarcascade_eye.xml")
 
-data_folder = r"C:\Users\faiya\OneDrive\Desktop\Face detection\data"
-os.makedirs(data_folder, exist_ok=True)
+# Initialize the webcam capture with camera index 1 (or 0 for the default camera)
+cap = cv2.VideoCapture(0)
 
-def detect_landmarks(frame):
-    imgRGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    results = faceMesh.process(imgRGB)
-    face_info = []
-    if results.multi_face_landmarks:
-        for face_id, faceLms in enumerate(results.multi_face_landmarks):
-            mpDraw.draw_landmarks(frame, faceLms, mpFaceMesh.FACEMESH_CONTOURS,
-                                  drawSpec, drawSpec)
-            landmarks = [(int(lm.x * frame.shape[1]), int(lm.y * frame.shape[0])) for lm in faceLms.landmark]
-            face_info.append({"face_id": face_id, "landmarks": landmarks})
-    return frame, face_info
+# Set the resolution for the webcam capture
+cap.set(3, 640)
+cap.set(4, 480)
 
-def detect_faces_and_eyes(frame, gray):
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-    face_info = []
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
-        roi_gray = gray[y:y+h, x:x+w]
-        roi_color = frame[y:y+h, x:x+w]
-        eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 3)
-        face_id = len(face_info)
-        landmarks = [(x + ex, y + ey) for (ex, ey, ew, eh) in eyes]
-        face_info.append({"face_id": face_id, "landmarks": landmarks})
-        cv2.imwrite(os.path.join(data_folder, f"detected_face_{face_id}.jpg"), roi_color)
-    return frame, face_info
+# Load the 'background.png' image from the 'Resources' folder
+imgBackground = cv2.imread('Resources/background.png')
 
-video = cv2.VideoCapture(0)
+# Importing the mode images into a list
+folderModePath = 'Resources/Modes'
+modePathList = os.listdir(folderModePath)
+imgModeList = []
+for path in modePathList:
+    imgModeList.append(cv2.imread(os.path.join(folderModePath, path)))
+# print(len(imgModeList))
 
-all_faces_info = []
+# Load the encoding file
+print("Loading Encode File ...")
+file = open('EncodeFile.p', 'rb')
+encodeListKnownWithIds = pickle.load(file)
+file.close()
+encodeListKnown, studentIds = encodeListKnownWithIds
+# print(studentIds)
+print("Encode File Loaded")
+
 
 while True:
-    _, frame = video.read()
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Read a frame from the webcam
+    success, img = cap.read()
 
-    # Detect and draw facial landmarks
-    frame, landmarks_info = detect_landmarks(frame)
-    all_faces_info.extend(landmarks_info)
+    # Check if the webcam frame capture was successful
+    if not success:
+        print("Failed to capture frame from the webcam.")
+        break
 
-    # Detect and draw faces and eyes
-    frame, faces_info = detect_faces_and_eyes(frame, gray)
-    all_faces_info.extend(faces_info)
+    imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+    imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
 
-    cv2.imshow('Video', frame)
+    faceCurFrame = face_recognition.face_locations(imgS)
+    encodeCurFrame = face_recognition.face_encodings(imgS, faceCurFrame)
+
+
+    # Overlay the webcam frame on the background image
+    imgBackground[162:162+480, 55:55+640] = img
+    imgBackground[44:44 + 633, 808:808 + 414] = imgModeList[0]
+
+
+    for encodeFace, faceLoc in zip(encodeCurFrame, faceCurFrame):
+        matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
+        faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
+        # print("matches", matches)
+        # print("faceDis", faceDis)
+
+
+        matchIndex = np.argmin(faceDis)
+        print("Match Index", matchIndex)
+
+        if matches[matchIndex]:
+            print("Known Face Detected")
+            print(studentIds[matchIndex])
+            # y1, x2, y2, x1 = faceLoc
+            # y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
+            # bbox = 55 + x1, 162 + y1, x2 - x1, y2 - y1
+            # imgBackground = cvzone.cornerRect(imgBackground, bbox, rt=0)
+            # id = studentIds[matchIndex]
+
+    # Display the combined image
+    cv2.imshow("Face Recognition", imgBackground)
+
+    # Exit the loop when the 'q' key is pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Save faces and landmarks information to a file
-with open(os.path.join(data_folder, "faces_info.txt"), "w") as f:
-    for info in all_faces_info:
-        f.write(f"Face ID: {info['face_id']}, Landmarks: {info['landmarks']}\n")
-
-video.release()
+# Release the webcam and close OpenCV windows
+cap.release()
 cv2.destroyAllWindows()
